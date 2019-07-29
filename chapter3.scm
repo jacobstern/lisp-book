@@ -1,6 +1,6 @@
 #!/usr/bin/env gosh
 
-;;; Code adapted from Lisp in Small Pieces Chapter 3
+;;; Code adapted from chapter 3 of Lisp in Small Pieces by Christian Quiennec
 ;;; Requires Gauche Scheme http://practical-scheme.net/gauche/
 
 (define (wrong msg . irritants)
@@ -17,8 +17,11 @@
       ((quote) (evaluate-quote (cadr e) r k))
       ((if) (evaluate-if (cadr e) (caddr e) (cadddr e) r k))
       ((begin) (evaluate-begin (cdr e) r k))
-      ((set!) (evaluate-set! (cadr e) (caddre) r k))
+      ((set!) (evaluate-set! (cadr e) (caddr e) r k))
       ((lambda) (evaluate-lambda (cadr e) (cddr e) r k))
+      ((catch) (evaluate-catch (cadr e) (cddr e) r k))
+      ((throw) (evaluate-throw (cadr e) (caddr e) r k))
+      ((unwind-protect) (evaluate-unwind-protect (cadr e) (cddr e) r k))
       (else (evaluate-application (car e) (cdr e) r k)))))
 
 (define-class <value> () ())
@@ -68,7 +71,7 @@
   (evaluate-begin
     (cdr (begin-cont-e* k))
     (begin-cont-r k)
-    (begin-continuation-k k)))
+    (continuation-k k)))
 
 (define-class <null-env> (<environment>) ())
 
@@ -83,10 +86,13 @@
   (make <full-env> :others others :name name))
 
 (define-class <variable-env> (<full-env>)
-  (value
-    :init-keyword :value
-    :getter variable-env-value
-    :setter set-variable-env-value!))
+  ((value
+     :init-keyword :value
+     :getter variable-env-value
+     :setter set-variable-env-value!)
+    (name
+      :init-keyword :name
+      :getter variable-env-name)))
 
 (define (make-variable-env others name value)
   (make <variable-env> :others others :name name :value value))
@@ -103,7 +109,7 @@
 (define-method lookup ((r <variable-env>) n k)
   (if (eqv? n (variable-env-name r))
     (resume k (variable-env-value r))
-    (lookup (variable-env-others r) n k)))
+    (lookup (full-env-others r) n k)))
 
 (define-class <set!-cont> (<continuation>)
   ((n :init-keyword :n :getter set!-cont-n)
@@ -114,9 +120,6 @@
 
 (define (evaluate-set! n e r k)
   (evaluate e r (make-set!-cont k n r)))
-
-(define-method resume ((k <set!-cont>) v)
-  (update! (set!-cont-r k) (set!-cont-n k) (set!-continuation-k k) v))
 
 (define-method update! ((r <null-env>) n k v)
   (wrong "Unknown variable" n r k))
@@ -129,7 +132,10 @@
     (begin
       (set-variable-env-value! r v)
       (resume k v))
-    (update! (variable-env-others r) n k v)))
+    (update! (full-env-others r) n k v)))
+
+(define-method resume ((k <set!-cont>) v)
+  (update! (set!-cont-r k) (set!-cont-n k) (continuation-k k) v))
 
 (define-class <function> (<value>)
   ((variables :init-keyword :variables :getter function-variables)
@@ -240,7 +246,7 @@
       (definitial name
         (make-primitive
           'name (lambda (v* r k)
-                  (if (= arity (lenth v*))
+                  (if (= arity (length v*))
                     (resume k (apply value v*))
                     (wrong "Incorrect arity" 'name v*))))))))
 
@@ -249,6 +255,10 @@
 (defprimitive cons cons 2)
 
 (defprimitive car car 1)
+
+(defprimitive + + 2)
+
+(defprimitive * * 2)
 
 (define-method invoke ((f <primitive>) v* r k)
   ((primitive-address f) v* r k))
@@ -269,3 +279,130 @@
       (make-bottom-cont 'void display))
     (toplevel))
   (toplevel))
+
+(definitial call/cc
+  (make-primitive
+    'call/cc
+    (lambda (v* r k)
+      (if (= 1 (length v*))
+        (invoke (car v*) (list k) r k)
+        (wrong "Incorrect arity" 'call/cc v*)))))
+
+(define-method invoke ((f <continuation>) v* r k)
+  (if (= 1 (length v*))
+    (resume f (car v*))
+    (wrong "Continuations expect one argument" v* r k)))
+
+(define-class <catch-cont> (<continuation>)
+  ((body :init-keyword :body :getter catch-cont-body)
+    (r :init-keyword :r :getter catch-cont-r)))
+
+(define (make-catch-cont k body r)
+  (make <catch-cont> :k k :body body :r r))
+
+(define-class <labeled-cont> (<continuation>)
+  ((tag :init-keyword :tag :getter labeled-cont-tag)))
+
+(define (make-labeled-cont k tag)
+  (make <labeled-cont> :k k :tag tag))
+
+;; Not printed in book, I might have missed something here
+(define-method resume ((k <labeled-cont>) v)
+  (resume (continuation-k k) v))
+
+(define (evaluate-catch tag body r k)
+  (evaluate tag r (make-catch-cont k body r)))
+
+(define-method resume ((k <catch-cont>) v)
+  (evaluate-begin (catch-cont-body k)
+    (catch-cont-r k)
+    (make-labeled-cont (continuation-k k) v)))
+
+(define-class <throw-cont> (<continuation>)
+  ((form :init-keyword :form :getter throw-cont-form)
+    (r :init-keyword :r :getter throw-cont-r)))
+
+(define (make-throw-cont k form r)
+  (make <throw-cont> :k k :form form :r r))
+
+(define-class <throwing-cont> (<continuation>)
+  ((tag :init-keyword :tag :getter throwing-cont-tag)
+    (cont :init-keyword :cont :getter throwing-cont-cont)))
+
+(define (make-throwing-cont k tag cont)
+  (make <throwing-cont> :k k :tag tag :cont cont))
+
+(define (evaluate-throw tag form r k)
+  (evaluate tag r (make-throw-cont k form r)))
+
+(define-method resume ((k <throw-cont>) tag)
+  (catch-lookup k tag k))
+
+(define-method catch-lookup ((k <continuation>) tag kk)
+  (catch-lookup (continuation-k k) tag kk))
+
+(define-method catch-lookup ((k <bottom-cont>) tag kk)
+  (wrong "No associated catch" k tag kk))
+
+(define-method catch-lookup ((k <labeled-cont>) tag kk)
+  (if (eqv? tag (labeled-cont-tag k))   ; comparator
+    (evaluate (throw-cont-form kk)
+      (throw-cont-r kk)
+      (make-throwing-cont kk tag k))
+    (catch-lookup (continuation-k k) tag kk)))
+
+(define-method resume ((k <throwing-cont>) v)
+  (unwind (continuation-k k) v (throwing-cont-cont k)))
+
+(define-class <unwind-protect-cont> (<continuation>)
+  ((cleanup :init-keyword :cleanup :getter unwind-protect-cont-cleanup)
+    (r :init-keyword :r :getter unwind-protect-cont-r)))
+
+(define (make-unwind-protect-cont k cleanup r)
+  (make <unwind-protect-cont> :k k :cleanup cleanup :r r))
+
+(define-class <protect-return-cont> (<continuation>)
+  ((value :init-keyword :value :getter protect-return-cont-value)))
+
+(define (make-protect-return-cont k value)
+  (make <protect-return-cont> :k k :value value))
+
+(define (evaluate-unwind-protect form cleanup r k)
+  (evaluate form
+    r
+    (make-unwind-protect-cont k cleanup r)))
+
+(define-method resume ((k <unwind-protect-cont>) v)
+  (evaluate-begin (unwind-protect-cont-cleanup k)
+    (unwind-protect-cont-r k)
+    (make-protect-return-cont (continuation-k k) v)))
+
+(define-method resume ((k <protect-return-cont>) v)
+  (resume (continuation-k k) (protect-return-cont-value k)))
+
+(define-class <unwind-cont> (<continuation>)
+  ((value :init-keyword :value :getter unwind-cont-value)
+    (target :init-keyword :target :getter unwind-cont-target)))
+
+(define (make-unwind-cont k value target)
+  (make <unwind-cont> :k k :value value :target target))
+
+(define-method unwind ((k <continuation>) v ktarget)
+  (if (eq? k ktarget) (resume k v)
+    (unwind (continuation-k k) v ktarget)))
+
+(define-method unwind ((k <bottom-cont>) v ktarget)
+  (wrong "Obsolete continuation v"))
+
+(define-method unwind ((k <unwind-protect-cont>) v target)
+  (evaluate-begin
+    (unwind-protect-cont-cleanup k)
+    (unwind-protect-cont-r k)
+    (make-unwind-cont
+      (continuation-k k) v target)))
+
+(define-method resume ((k <unwind-cont>) v)
+  (unwind
+    (continuation-k k)
+    (unwind-cont-value k)
+    (unwind-cont-target k)))
