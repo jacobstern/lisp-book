@@ -203,9 +203,17 @@
       f
       (evfun-cont-r k))))
 
+(define-class <no-more-argument-cont> (<continuation>)
+  ())
+
+(define (make-no-more-argument-cont k)
+  (make <no-more-argument-cont> :k k))
+
 (define (evaluate-arguments e* r k)
   (if (pair? e*)
-    (evaluate (car e*) r (make-argument-cont k e* r))
+    (if (pair? (cdr e*))
+      (evaluate (car e*) r (make-argument-cont k e* r))
+      (evaluate (car e*) r (make-no-more-argument-cont k)))
     (resume k no-more-arguments)))
 
 (define no-more-arguments '())
@@ -224,6 +232,9 @@
     v
     (apply-cont-r k)
     (continuation-k k)))
+
+(define-method resume ((k <no-more-argument-cont>) v)
+  (resume (continuation-k k) (list v)))
 
 (define-syntax definitial
   (syntax-rules ()
@@ -406,3 +417,4 @@
     (continuation-k k)
     (unwind-cont-value k)
     (unwind-cont-target k)))
+

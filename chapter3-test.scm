@@ -22,6 +22,12 @@
   (lambda () (test-evaluate
                '((lambda (x) (set! x 5) x) 3))))
 
+(test-section "call/cc")
+
+(test "basic use of continuation"
+  2
+  (lambda () (test-evaluate '(call/cc (lambda (k) (k 2))))))
+
 (test-section "unwind-protect")
 
 (test "cleanup form is evaluated"
@@ -34,11 +40,12 @@
 (test "cleanup form is evaluated with throw/catch"
   5
   (lambda () (test-evaluate
-               '((lambda (x)
+               '((lambda (x y)
                    (catch 'x (unwind-protect
-                               (throw 'x 'something)
-                               (set! x 5)))
-                   x) 3))))
+                               (begin
+                                 (throw 'x 'something)
+                                 (set! y 3))
+                               (set! x 4)))
+                   (+ x y)) 3 1))))
 
 (test-end :exit-on-failure #t)
-
