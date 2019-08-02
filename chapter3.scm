@@ -1,7 +1,9 @@
 #!/usr/bin/env gosh
 
-;;; Code adapted from chapter 3 of Lisp in Small Pieces by Christian Quiennec
+;;; Code adapted from Chapter 3 of Lisp in Small Pieces by Christian Quiennec
 ;;; Requires Gauche Scheme http://practical-scheme.net/gauche/
+
+(use scheme.base)
 
 (define (wrong msg . irritants)
   (apply error (cons msg irritants)))
