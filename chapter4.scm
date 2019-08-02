@@ -8,23 +8,6 @@
 (define (wrong msg . irritants)
   (apply error (cons msg irritants)))
 
-(define (make-box value)
-  (lambda (msg)
-    (case msg
-      ((get) value)
-      ((set!) (lambda (new-value) (set! value new-value))))))
-
-(define (box-ref box)
-  (box 'get))
-
-(define (box-set! box new-value)
-  ((box 'set!) new-value))
-
-;; (define-record-type <box>
-;;   (make-box value)
-;;   box?
-;;   (value box-ref box-set!))
-
 (define (evaluate e r s k)
   (if (list? e)
     (case (car e)
@@ -233,12 +216,12 @@
     (allocate-pair (car v*) (cadr v*) s k))
   2)
 
-(defprimitive set-car!
+(defprimitive car
   (lambda (v* s k)
     (if (eq? ((car v*) 'type) 'pair)
       (k (s ((car v*) 'car)) s)
       (wrong "Not a pair" (car v*))))
-  2)
+  1)
 
 (defprimitive set-cdr!
   (lambda (v* s k)
