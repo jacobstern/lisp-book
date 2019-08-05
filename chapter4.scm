@@ -71,7 +71,7 @@
             (wrong "Not a function" (car v*))))))))
 
 (define (evaluate-lambda n* e* r s k)
-  (allocate1 s
+  (allocate 1 s
     (lambda (a* ss)
       (k (create-function
            (car a*)
@@ -262,11 +262,14 @@
 
 (define (chapter4-interpreter)
   (define (toplevel s)
-    (evaluate (read)
-      r.global
-      s
-      (lambda (v ss)
-        (display (transcode-back v ss)))))
+    (let ((next (read)))
+      (if (not (eof-object? next))
+        (evaluate next
+          r.global
+          s
+          (lambda (v ss)
+            (display (transcode-back v ss))
+            (toplevel ss))))))
   (toplevel s.global))
 
 (define (transcode-back v s)
@@ -278,8 +281,25 @@
     ((number) (v 'value))
     ((pair) (cons (transcode-back (s (v 'car)) s)
               (transcode-back (s (v 'cdr)) s)))
-    ((function) (string-append "#<function " (v 'tag) ">"))
+    ((function) (string-append "#<function " (number->string (v 'tag)) ">"))
     (else (wrong "Unknown type" (v 'type)))))
 
-(define (evaluate-quote v r s k)
-  (wrong "Not implemented"))
+(define (transcode c s q)
+  (cond
+    ((null? c) (q the-empty-list s))
+    ((boolean? c) (q (create-boolean c) s))
+    ((symbol? c) (q (create-symbol c) s))
+    ((string? c) (q (create-string c) s))
+    ((number? c) (q (create-number c) s))
+    ((pair? c)
+      (transcode (car c)
+        s
+        (lambda (a ss)
+          (transcode (cdr c)
+            ss
+            (lambda (d sss)
+              (allocate-pair a d sss q))))))))
+
+(define (evaluate-quote c r s k)
+  (transcode c s k))
+

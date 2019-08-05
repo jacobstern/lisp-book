@@ -29,4 +29,16 @@
   #t
   (lambda () (test-evaluate '(car (cons t nil)))))
 
+(test-section "side effects")
+
+(test "set! function argument"
+  #t
+  (lambda () (test-evaluate '((lambda (x) (set! x t) x) nil))))
+
+(test "conditional set!"
+  '(2 . 4)
+  (lambda () (test-evaluate '((lambda (fn) (cons (fn 2 t) (fn 2 f)))
+                               (lambda (x b)
+                                 (if b x (begin (set! x (* x 2)) x)))))))
+
 (test-end :exit-on-failure #t)
