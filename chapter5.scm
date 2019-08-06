@@ -3,8 +3,10 @@
 ;;; Code adapted from Chapter 5 of Lisp in Small Pieces by Christian Quiennec
 ;;; Requires Gauche Scheme http://practical-scheme.net/gauche/
 
+;;; This interpreter isn't complete, I only added the code from the
+;;; text of the book
+
 (use scheme.base)
-(use scheme.lazy)
 
 (define (wrong msg . irritants)
   (apply error (cons msg irritants)))
