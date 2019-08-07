@@ -4,53 +4,30 @@
 ;;; Requires Gauche Scheme http://practical-scheme.net/gauche/
 
 (use scheme.base)
+(load "./meroonet.scm")
 
 (define (wrong msg . culprits)
   (apply error (cons msg culprits)))
 
-(define-class <environment> ()
-  ((next :init-keyword :next :accessor next-of)))
+(define-class environment Object
+  (next))
 
-(define-class <activation-frame> (<environment>)
-  ((size :init-keyword :size :getter size-of)
-    (arguments :getter arguments-of)))
-
-(define-method initialize ((self <activation-frame>) initargs)
-  (let ((ret (next-method)))
-    (if (number? (size-of self))
-      (begin
-        (set! (ref self 'arguments) (make-vector (size-of self)))
-        ret)
-      (error "Must initialize <activation-frame> with a size"))))
-
-(define (set-activation-frame-argument! x n v)
-  (set! (vector-ref (arguments-of x) n) v)
-  x)
-
-(define activation-frame-argument
-  (getter-with-setter (lambda (x n)
-                        (vector-ref (arguments-of x) n))
-    set-activation-frame-argument!))
-
-(define (activation-frame-argument-length x)
-  (vector-length (ref x 'arguments)))
-
-(define (allocate-activation-frame n)
-  (make <activation-frame> :next #f :size n))
+(define-class activation-frame environment
+  ((* argument)))
 
 (define (sr-extend* sr v*)
-  (set! (next-of v*) sr)
+  (set-environment-next! v* sr)
   v*)
 
 (define (deep-fetch sr i j)
   (if (= i 0)
     (activation-frame-argument sr j)
-    (deep-fetch (next-of sr) (- i 1) j)))
+    (deep-fetch (environment-next sr) (- i 1) j)))
 
 (define (deep-update! sr i j v)
   (if (= i 0)
-    (set! (activation-frame-argument! sr j) v)
-    (deep-update! (next-of sr) (- i 1) j v)))
+    (set-activation-frame-argument! sr j v)
+    (deep-update! (environment-next sr) (- i 1) j v)))
 
 (define (r-extend* r n*)
   (cons n* r))
@@ -126,7 +103,7 @@
 (define (meaning-no-argument r size)
   (let ((size+1 (+ size 1)))
     (lambda (sr k)
-      (let ((v* (make <activation-frame> :size size+1)))
+      (let ((v* (allocate-activation-frame size+1)))
         (k v*)))))
 
 (define (meaning-some-arguments e e* r size)
@@ -136,7 +113,7 @@
     (lambda (sr k)
       (m sr (lambda (v)
               (m* sr (lambda (v*)
-                       (set! (activation-frame-argument v* rank) v)
+                       (set-activation-frame-argument! v* rank v)
                        (k v*))))))))
 
 (define (meaning-fix-abstraction n* e+ r)
@@ -530,8 +507,4 @@
             frame)
           k)
         (wrong "Incorrect arity" 'call/cc)))))
-
-(define-syntax defvariable
-  (syntax-rules ()
-    ((defvariable name) (g.current-initialize! 'name))))
 
