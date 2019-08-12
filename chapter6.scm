@@ -4,10 +4,7 @@
 ;;; Requires Gauche Scheme http://practical-scheme.net/gauche/
 
 (use scheme.base)
-(load "./meroonet.scm")
-
-(define (wrong msg . culprits)
-  (apply error (cons msg culprits)))
+(load "./prelude.scm")
 
 (define-class environment Object
   (next))
